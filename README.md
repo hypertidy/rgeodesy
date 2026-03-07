@@ -1,4 +1,4 @@
-# geod
+# rgeodesy
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/diminutive/geod/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/diminutive/geod/actions/workflows/R-CMD-check.yaml)
@@ -15,13 +15,13 @@ Very early, not for use yet.
 Requires a Rust toolchain (`rustup`).
 
 ```r
-remotes::install_github("diminutive/geod")
+remotes::install_github("hypertidy/rgeodesy")
 ```
 
 ## Usage
 
 ```r
-library(geod)
+library(rgeodesy)
 
 # What operators are available?
 geod_ops()
