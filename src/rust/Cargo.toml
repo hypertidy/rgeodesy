@@ -1,14 +1,12 @@
 [package]
-name = 'geod'
+name = 'rgeodesy'
 version = '0.1.0'
 edition = '2021'
 
 [lib]
 crate-type = [ 'staticlib' ]
-name = 'geod'
+name = 'rgeodesy'
 
 [dependencies]
-extendr-api = '0.3.1'
-geodesy = {git = "https://github.com/busstoptaktik/geodesy.git"}
-anyhow = { version = "1.0" }
-
+extendr-api = '0.7.1'
+geodesy = '0.15'
