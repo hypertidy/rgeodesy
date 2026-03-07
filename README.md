@@ -6,9 +6,9 @@
 
 R bindings to [Rust Geodesy](https://github.com/busstoptaktik/geodesy) by
 Thomas Knudsen — a platform for experiments with geodetic transformations and
-data flow. Not PROJ. Not a PROJ replacement. A clean-room exploration of what
-geodesy could look like, with a pipeline architecture, physical geodesy
-operations, and ~5000 lines of Rust.
+data flow. 
+
+Very early, not for use yet. 
 
 ## Installation
 
@@ -49,3 +49,8 @@ geod_validate("utm zone=banana")      # error string
 - [Rust Geodesy](https://github.com/busstoptaktik/geodesy) — the upstream crate
 - [reproj](https://github.com/hypertidy/reproj) — PROJ-based reprojection for R
 - [geographiclib](https://github.com/hypertidy/geographiclib) — Karney geodesics for R
+
+
+## Code of Conduct
+  
+Please note that the rgeodesy project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/1/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms.

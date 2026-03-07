@@ -1,3 +1,4 @@
 ^geod\.Rproj$
 ^\.Rproj\.user$
 ^src/\.cargo$
+^CODE_OF_CONDUCT\.md$
