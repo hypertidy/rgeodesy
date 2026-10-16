@@ -5,8 +5,34 @@ use geodesy::prelude::*;
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
+/// Reject operator strings that are known to recurse infinitely in Rust
+/// Geodesy and take down the R session with a C stack overflow.
+///
+/// The bare `pipeline` operator is the main offender: `Minimal::op("pipeline")`
+/// recurses without bound (a stack overflow is a hardware fault, not a Rust
+/// panic, so it cannot be caught with `catch_unwind`). We therefore refuse it
+/// up front. Real pipelines are built with the `|` separator, e.g.
+/// `"geo:in | utm zone=32"`, and do not hit this path.
+fn guard_recursive(op_str: &str) -> std::result::Result<(), String> {
+    for step in op_str.split('|') {
+        let name = step.trim().split_whitespace().next().unwrap_or("");
+        if name == "pipeline" {
+            return Err(
+                "the bare 'pipeline' operator is not supported: it recurses \
+                 infinitely in Rust Geodesy and would crash R. Compose steps \
+                 with the '|' separator instead, e.g. 'geo:in | utm zone=32'."
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Build a Minimal context, compile an op string, apply to (x, y) vectors,
-/// return a list(x = numeric, y = numeric). Used by the public R wrappers.
+/// return (x, y) as numeric vectors. Used by the public R wrappers.
+///
+/// The whole compile+apply is wrapped in `catch_unwind` so that a panic inside
+/// Rust Geodesy surfaces as a clean R error rather than aborting the session.
 fn apply_op(
     op_str: &str,
     x: &[f64],
@@ -16,35 +42,45 @@ fn apply_op(
     if x.len() != y.len() {
         return Err(format!(
             "x and y must have the same length (got {} and {})",
-            x.len(), y.len()
+            x.len(),
+            y.len()
         ));
     }
+    guard_recursive(op_str)?;
 
-    let mut ctx = Minimal::new();
-    let op = ctx
-        .op(op_str)
-        .map_err(|e| format!("Failed to build op '{}': {}", op_str, e))?;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || -> std::result::Result<(Vec<f64>, Vec<f64>), String> {
+            let mut ctx = Minimal::new();
+            let op = ctx
+                .op(op_str)
+                .map_err(|e| format!("Failed to build op '{}': {}", op_str, e))?;
 
-    // RG works internally in radians. Convert degree inputs if the pipeline
-    // does not include a geo:in adaptor. We always wrap with geo:in | ... | geo:out
-    // at the Rust level so the R user works in degrees throughout.
-    // Actually we leave this to the user via the pipeline string — raw Coor2D
-    // takes values as-is. The canonical pipeline for geographic->projected is
-    // "geo:in | utm zone=N" and for the inverse "utm zone=N | geo:out".
-    let mut data: Vec<Coor2D> = x
-        .iter()
-        .zip(y.iter())
-        .map(|(&xi, &yi)| Coor2D([xi, yi]))
-        .collect();
+            // Coordinates are taken as-is. Geographic input must be handled with
+            // a `geo:in` / `gis:in` adaptor in the pipeline (RG works internally
+            // in radians); `geo:out` / `gis:out` convert back to degrees.
+            let mut data: Vec<Coor2D> = x
+                .iter()
+                .zip(y.iter())
+                .map(|(&xi, &yi)| Coor2D([xi, yi]))
+                .collect();
 
-    let dir = if inv { Inv } else { Fwd };
-    ctx.apply(op, dir, &mut data)
-        .map_err(|e| format!("Failed to apply op: {}", e))?;
+            let dir = if inv { Inv } else { Fwd };
+            ctx.apply(op, dir, &mut data)
+                .map_err(|e| format!("Failed to apply op '{}': {}", op_str, e))?;
 
-    let out_x: Vec<f64> = data.iter().map(|c| c[0]).collect();
-    let out_y: Vec<f64> = data.iter().map(|c| c[1]).collect();
+            let out_x: Vec<f64> = data.iter().map(|c| c[0]).collect();
+            let out_y: Vec<f64> = data.iter().map(|c| c[1]).collect();
+            Ok((out_x, out_y))
+        },
+    ));
 
-    Ok((out_x, out_y))
+    match result {
+        Ok(inner) => inner,
+        Err(_) => Err(format!(
+            "Rust Geodesy panicked while building or applying '{}'",
+            op_str
+        )),
+    }
 }
 
 // ── Exported functions ────────────────────────────────────────────────────────
@@ -52,74 +88,56 @@ fn apply_op(
 /// Apply a Rust Geodesy pipeline to coordinate vectors.
 ///
 /// Compiles the pipeline string once and applies it to all coordinate pairs in
-/// a single batch. The pipeline syntax follows Rust Geodesy (RG), which is
-/// similar to PROJ pipelines but not identical. See
-/// <https://github.com/busstoptaktik/geodesy/blob/main/ruminations/002-rumination.md>
-/// for operator documentation.
-///
-/// Input coordinates should be in the *natural* order for the operator — for
-/// geographic operations this is (longitude, latitude) in decimal degrees, for
-/// projected operations it is (easting, northing) in metres.
+/// a single batch. Raises an R error if the pipeline fails to compile or apply.
 ///
 /// @param op_str Character scalar. A Rust Geodesy pipeline string,
 ///   e.g. `"utm zone=32"` or `"geo:in | utm zone=55 | neu:out"`.
-/// @param x Numeric vector. First coordinate (longitude or easting).
-/// @param y Numeric vector. Second coordinate (latitude or northing).
-///   Must be the same length as `x`.
+/// @param x Numeric vector. First coordinate.
+/// @param y Numeric vector. Second coordinate. Must be the same length as `x`.
 /// @param inv Logical scalar. Run the inverse operation. Default `FALSE`.
 /// @return A list with elements `x` and `y`, each a numeric vector of the
 ///   same length as the input.
-/// @export
-/// @examples
-/// \dontrun{
-/// # UTM zone 55 (Tasmania)
-/// geod_apply("utm zone=55", x = c(147.3, 147.5), y = c(-42.9, -42.8))
-///
-/// # Inverse: UTM -> geographic
-/// geod_apply("utm zone=55", x = c(509576, 527060), y = c(5247523, 5258991),
-///            inv = TRUE)
-///
-/// # Pipeline: geographic in, northing-easting-up out
-/// geod_apply("geo:in | utm zone=32 | neu:out",
-///            x = c(12., 18.), y = c(55., 59.))
-/// }
 #[extendr]
 fn geod_apply(op_str: &str, x: &[f64], y: &[f64], inv: bool) -> Robj {
     match apply_op(op_str, x, y, inv) {
         Ok((out_x, out_y)) => list!(x = out_x, y = out_y).into(),
-        Err(e) => {
-            rprintln!("Error in geod_apply: {}", e);
-            r!(NULL)
-        }
+        // `throw_r_error` diverges via `Rf_error`, giving a clean R error with
+        // our message instead of extendr's generic "User function panicked".
+        Err(e) => extendr_api::throw_r_error(e),
     }
 }
 
 /// List the operators available in a Minimal Rust Geodesy context.
 ///
-/// Returns the names of all built-in operators registered in a freshly
-/// created `Minimal` context. Useful for discovery — to see what pipelines
-/// you can build.
+/// Returns the names of all built-in operators and coordinate adaptors
+/// registered in a freshly created `Minimal` context. The list mirrors the
+/// `BUILTIN_OPERATORS` and `BUILTIN_ADAPTORS` tables of Rust Geodesy 0.15 and
+/// must be kept in step with the pinned crate version.
 ///
-/// @return A character vector of operator names.
-/// @export
-/// @examples
-/// ops <- geod_ops()
-/// head(ops)
-/// "utm" %in% ops
+/// @return A sorted character vector of operator names.
 #[extendr]
 fn geod_ops() -> Vec<String> {
-    // Operators available in a Minimal context as of geodesy 0.15.
-    // From https://github.com/busstoptaktik/geodesy/blob/main/ruminations/002-rumination.md
+    // Mirrors geodesy 0.15 src/inner_op/mod.rs (BUILTIN_OPERATORS) and
+    // src/context/mod.rs (BUILTIN_ADAPTORS). `addone` is an upstream demo op.
     let mut ops = vec![
-        "adapt", "affine", "axisswap", "cart", "deformation",
-        "dm", "geoid", "gridshift", "helmert", "hgridshift",
-        "horner", "latshift", "lcc", "laea", "merc",
-        "molodensky", "namepipes", "noop", "normalize", "omerc",
-        "pipeline", "pop", "proj", "push", "tmerc",
-        "unitconvert", "utm", "vgridshift", "webmerc",
-        // adaptor ops
-        "geo:in", "geo:out", "gis:in", "gis:out",
-        "neu:in", "neu:out", "enu:in", "enu:out",
+        // projections
+        "utm", "tmerc", "btmerc", "butm", "merc", "webmerc", "lcc", "laea",
+        "omerc", "somerc",
+        // datum / reference-frame transforms
+        "cart", "helmert", "molodensky", "gridshift", "deformation",
+        // geodetic utilities
+        "geodesic", "curvature", "gravity", "latitude", "deflection", "permtide",
+        // coordinate adaptors and unit handling
+        "adapt", "axisswap", "unitconvert", "dm", "dms",
+        // pipeline / stack handlers
+        "pipeline", "push", "pop", "stack",
+        // noop and its aliases
+        "noop", "longlat", "latlon", "latlong", "lonlat",
+        // demo operator
+        "addone",
+        // built-in I/O adaptor macros
+        "geo:in", "geo:out", "gis:in", "gis:out", "neu:in", "neu:out", "enu:in",
+        "enu:out",
     ];
     ops.sort();
     ops.iter().map(|s| s.to_string()).collect()
@@ -127,24 +145,28 @@ fn geod_ops() -> Vec<String> {
 
 /// Validate a Rust Geodesy pipeline string.
 ///
-/// Attempts to compile the pipeline and returns `TRUE` if it succeeds,
-/// or a character string describing the error if it fails. Useful for
-/// checking pipelines interactively before passing to [geod_apply()].
+/// Attempts to compile the pipeline and returns `TRUE` if it succeeds, or a
+/// character string describing the error if it fails.
 ///
 /// @param op_str Character scalar. A Rust Geodesy pipeline string.
-/// @return `TRUE` if the pipeline is valid, or a character string with
-///   the error message.
-/// @export
-/// @examples
-/// geod_validate("utm zone=32")        # TRUE
-/// geod_validate("utm zone=banana")    # error string
-/// geod_validate("geo:in | utm zone=55 | neu:out")  # TRUE
+/// @return `TRUE` if the pipeline is valid, or a character string with the
+///   error message.
 #[extendr]
 fn geod_validate(op_str: &str) -> Robj {
-    let mut ctx = Minimal::new();
-    match ctx.op(op_str) {
-        Ok(_) => r!(TRUE),
-        Err(e) => r!(format!("{}", e)),
+    if let Err(e) = guard_recursive(op_str) {
+        return r!(e);
+    }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut ctx = Minimal::new();
+        match ctx.op(op_str) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("{}", e)),
+        }
+    }));
+    match result {
+        Ok(Ok(())) => r!(TRUE),
+        Ok(Err(e)) => r!(e),
+        Err(_) => r!(format!("Rust Geodesy panicked while compiling '{}'", op_str)),
     }
 }
 

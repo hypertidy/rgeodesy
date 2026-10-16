@@ -1,48 +1,106 @@
 # rgeodesy
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/diminutive/geod/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/diminutive/geod/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/hypertidy/rgeodesy/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hypertidy/rgeodesy/actions/workflows/R-CMD-check.yaml)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
-R bindings to [Rust Geodesy](https://github.com/busstoptaktik/geodesy) by
+R bindings to [Rust Geodesy](https://github.com/busstoptaktik/geodesy) (RG) by
 Thomas Knudsen — a platform for experiments with geodetic transformations and
-data flow. 
+data flow. You build a transformation by writing a **pipeline string** of named
+operators and apply it to vectors of coordinates.
 
-Very early, not for use yet. 
+RG is a *geodesy* library rather than a cartography library: its datum and
+reference-frame machinery is extensive, and it supports a focused, high-quality
+set of map projections. It is well suited to learning the RG architecture and
+to geodetic operations that are awkward in PROJ-based tooling.
 
 ## Installation
 
-Requires a Rust toolchain (`rustup`).
+rgeodesy compiles a small Rust crate at install time, so you need a Rust
+toolchain (install via [rustup](https://rustup.rs), `rustc` >= 1.87):
 
-```r
+``` r
+# install.packages("remotes")
 remotes::install_github("hypertidy/rgeodesy")
 ```
 
-## Usage
+## Quick start
 
-```r
+``` r
 library(rgeodesy)
 
-# What operators are available?
-geod_ops()
+# Geographic (lon, lat) in degrees -> UTM zone 55 south (easting, northing).
+geod_apply("gis:in | utm zone=55 south", x = c(147.3, 147.5), y = c(-42.9, -42.8))
+#> $x
+#> [1] 524492.1 540886.1
+#> $y
+#> [1] 5250246 5261273
 
-# UTM zone 55 (Tasmania) — lon/lat in, easting/northing out
-geod_apply("utm zone=55", x = c(147.3, 147.5), y = c(-42.9, -42.8))
+# The same thing as a two-column matrix.
+geod_xy("gis:in | utm zone=55 south", x = c(147.3, 147.5), y = c(-42.9, -42.8))
+#>             x       y
+#> [1,] 524492.1 5250246
+#> [2,] 540886.1 5261273
 
-# Same but as a matrix
-geod_xy("utm zone=55", x = c(147.3, 147.5), y = c(-42.9, -42.8))
-
-# Inverse: projected -> geographic
-m <- geod_xy("utm zone=55", x = c(147.3, 147.5), y = c(-42.9, -42.8))
-geod_xy("utm zone=55", x = m[, "x"], y = m[, "y"], inv = TRUE)
-
-# Pipeline with adaptor ops
-geod_apply("geo:in | utm zone=32 | neu:out", x = c(12., 18.), y = c(55., 59.))
-
-# Validate a pipeline before using it
-geod_validate("utm zone=55")          # TRUE
-geod_validate("utm zone=banana")      # error string
+# Inverse: projected -> geographic (set inv = TRUE on the forward pipeline).
+m <- geod_xy("gis:in | utm zone=55 south", x = 147.3, y = -42.9)
+geod_apply("gis:in | utm zone=55 south", x = m[, "x"], y = m[, "y"], inv = TRUE)
+#> $x
+#> [1] 147.3
+#> $y
+#> [1] -42.9
 ```
+
+## How transformations are specified
+
+Rust Geodesy does **not** use EPSG codes or a `from -> to` pair of CRSs.
+Instead you describe the transformation directly as a pipeline of operator
+primitives, chained with `|`, each taking `key=value` arguments:
+
+```
+gis:in | utm zone=32 | gis:out
+```
+
+Because RG works internally in radians with a geodetic axis order, geographic
+data is bracketed with an I/O adaptor:
+
+| Adaptor         | Units   | Order            | Use for                    |
+|-----------------|---------|------------------|----------------------------|
+| `gis:in` / `gis:out` | degrees | `(lon, lat)`  | natural `(x, y)` — recommended |
+| `geo:in` / `geo:out` | degrees | `(lat, lon)`  | geodetic latitude-first    |
+| `enu:in` / `neu:in`  | radians | east/north-first | already-radian input     |
+
+Validate a pipeline before using it:
+
+``` r
+geod_validate("gis:in | utm zone=55 south")   # TRUE
+geod_validate("utm zone=banana")              # "Failed to build op ...: Malformed value ..."
+```
+
+## Operator families (Rust Geodesy 0.15)
+
+`geod_ops()` returns the full list of registered operators. The main families:
+
+| Family | Operators |
+|--------|-----------|
+| Projections | `utm`, `tmerc`, `btmerc`/`butm` (Bowring series), `merc`, `webmerc`, `lcc`, `laea`, `omerc`, `somerc` |
+| Datum / reference-frame | `cart`, `helmert`, `molodensky`, `gridshift`, `deformation` |
+| Geodetic computations | `geodesic`, `curvature`, `gravity`, `latitude`, `deflection`, `permtide` |
+| Adaptors & units | `adapt`, `axisswap`, `unitconvert`, `dm`, `dms`, `geo:*`/`gis:*`/`neu:*`/`enu:*`, `noop` |
+
+See the Rust Geodesy
+[operator documentation](https://github.com/busstoptaktik/geodesy/blob/main/ruminations/002-rumination.md)
+for the arguments each operator accepts.
+
+## Current limitations
+
+- The interface passes **two** coordinates (`x`, `y`) per point. Operators that
+  are inherently three-dimensional (`cart`, `helmert`, `deformation`) need a
+  height component to round-trip correctly, so full 3-D datum transforms are not
+  yet usable through this 2-D interface. Projections and 2-D operators work as
+  expected.
+- This is early, experimental software; the API may change.
 
 ## Related
 
@@ -50,7 +108,8 @@ geod_validate("utm zone=banana")      # error string
 - [reproj](https://github.com/hypertidy/reproj) — PROJ-based reprojection for R
 - [geographiclib](https://github.com/hypertidy/geographiclib) — Karney geodesics for R
 
-
 ## Code of Conduct
-  
-Please note that the rgeodesy project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/1/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms.
+
+Please note that the rgeodesy project is released with a
+[Contributor Code of Conduct](https://contributor-covenant.org/version/2/1/CODE_OF_CONDUCT.html).
+By contributing to this project, you agree to abide by its terms.

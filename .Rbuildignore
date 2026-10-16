@@ -1,4 +1,11 @@
-^geod\.Rproj$
+^rgeodesy\.Rproj$
 ^\.Rproj\.user$
 ^src/\.cargo$
+^src/rust/target$
 ^CODE_OF_CONDUCT\.md$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^\.github$
+^LICENSE\.md$
+^\.Rhistory$

@@ -7,24 +7,31 @@
 geod_xy(op_str, x, y, inv = FALSE)
 }
 \arguments{
-\item{op_str}{Character scalar. A Rust Geodesy pipeline string,
-e.g. \code{"geo:in | utm zone=55 south"}.}
+\item{op_str}{Character scalar. A Rust Geodesy pipeline string, e.g.
+\code{"gis:in | utm zone=32"}.}
 
-\item{x}{Numeric vector. First coordinate.}
+\item{x}{Numeric vector. First coordinate (longitude/easting under the GIS
+convention).}
 
-\item{y}{Numeric vector. Second coordinate. Must be the same length as \code{x}.}
+\item{y}{Numeric vector. Second coordinate (latitude/northing). Must be the
+same length as \code{x}.}
 
-\item{inv}{Logical. Run the inverse operation. Default \code{FALSE}.}
+\item{inv}{Logical scalar. Run the inverse operation. Default \code{FALSE}.}
 }
 \value{
 A numeric matrix with columns \code{x} and \code{y}, one row per input point.
 }
 \description{
-Convenience wrapper around \code{\link[=geod_apply]{geod_apply()}} that returns a numeric matrix
-with columns \code{x} and \code{y} rather than a list.
+Convenience wrapper around \code{\link[=geod_apply]{geod_apply()}} that returns a numeric matrix with
+columns \code{x} and \code{y} rather than a list.
 }
 \examples{
-\dontrun{
-geod_xy("geo:in | utm zone=55 south", x = c(-42.9, -42.8), y = c(147.3, 147.5))
+geod_xy("gis:in | utm zone=55 south", x = c(147.3, 147.5), y = c(-42.9, -42.8))
 }
+\seealso{
+Other rgeodesy functions:
+\code{\link[=geod_apply]{geod_apply()}},
+\code{\link[=geod_ops]{geod_ops()}},
+\code{\link[=geod_validate]{geod_validate()}}
 }
+\concept{rgeodesy functions}

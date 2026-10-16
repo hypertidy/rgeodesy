@@ -1,0 +1,35 @@
+url: https://hypertidy.github.io/rgeodesy/
+
+template:
+  bootstrap: 5
+  bslib:
+    primary: "#1c6b8c"
+    base_font: {google: "Inter"}
+    code_font: {google: "JetBrains Mono"}
+
+navbar:
+  structure:
+    left: [intro, reference, articles]
+    right: [search, github]
+
+reference:
+- title: Apply transformations
+  desc: Compile a Rust Geodesy pipeline and run it over coordinate vectors.
+  contents:
+  - geod_apply
+  - geod_xy
+- title: Discover and validate
+  desc: List the available operators and check a pipeline before using it.
+  contents:
+  - geod_ops
+  - geod_validate
+- title: Package overview
+  contents:
+  - rgeodesy-package
+
+articles:
+- title: Articles
+  navbar: ~
+  contents:
+  - rgeodesy
+  - operators

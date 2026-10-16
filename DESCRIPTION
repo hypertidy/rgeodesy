@@ -8,13 +8,20 @@ Description: Provides R bindings to the Rust Geodesy library by Thomas Knudsen,
     a platform for experiments with geodetic transformations and data flow.
     Exposes the pipeline operator model — compose transformations from named
     primitives such as 'utm', 'helmert', 'molodensky', and 'geo:in' adaptors —
-    and apply them to vectors of coordinates. Useful for learning the RG
-    architecture and for geodetic operations not available in PROJ-based tools.
+    and apply them to vectors of coordinates. Useful for learning the Rust
+    Geodesy architecture and for geodetic operations not available in
+    'PROJ'-based tools.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 Config/rextendr/version: 0.4.2
-SystemRequirements: Rust toolchain (>= 1.70) with cargo
-URL: https://github.com/diminutive/geod
-BugReports: https://github.com/diminutive/geod/issues
+Config/testthat/edition: 3
+SystemRequirements: Cargo (Rust's package manager), rustc (>= 1.87)
+URL: https://github.com/hypertidy/rgeodesy, https://hypertidy.github.io/rgeodesy/
+BugReports: https://github.com/hypertidy/rgeodesy/issues
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+Config/roxygen2/version: 8.1.0

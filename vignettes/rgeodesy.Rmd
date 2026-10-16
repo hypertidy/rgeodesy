@@ -1,0 +1,95 @@
+---
+title: "Getting started with rgeodesy"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with rgeodesy}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r setup}
+library(rgeodesy)
+```
+
+rgeodesy wraps [Rust Geodesy](https://github.com/busstoptaktik/geodesy) (RG), a
+platform for experiments with geodetic transformations. A transformation is a
+**pipeline string** of named operators; you apply it to vectors of coordinates.
+
+## The core idea: pipelines, not CRS codes
+
+Unlike PROJ, RG does not take EPSG codes or a `from -> to` pair of coordinate
+reference systems. You spell out the transformation as a pipeline of operator
+primitives chained with `|`, each taking `key=value` arguments. For example,
+projecting geographic coordinates to UTM zone 32:
+
+```{r}
+geod_apply("gis:in | utm zone=32", x = 12, y = 55)
+```
+
+## Coordinate order and units
+
+RG works internally in radians with a geodetic (latitude-first) axis order, so
+geographic data is bracketed with an I/O adaptor that converts units and order:
+
+- `gis:in` / `gis:out` — degrees in GIS order `(lon, lat)`, i.e. the natural
+  `(x, y)` order. Recommended for most R users.
+- `geo:in` / `geo:out` — degrees in geodetic order `(lat, lon)`.
+
+These two give the same result when you swap the arguments:
+
+```{r}
+geod_apply("gis:in | utm zone=55 south", x = 147.3, y = -42.9)
+geod_apply("geo:in | utm zone=55 south", x = -42.9, y = 147.3)
+```
+
+## Inverse transformations
+
+Pass `inv = TRUE` to run a pipeline backwards. Applying the forward pipeline and
+then its inverse recovers the input:
+
+```{r}
+fwd <- geod_apply("gis:in | utm zone=55 south", x = 147.3, y = -42.9)
+fwd
+geod_apply("gis:in | utm zone=55 south", x = fwd$x, y = fwd$y, inv = TRUE)
+```
+
+## Matrix output
+
+`geod_xy()` returns a two-column matrix instead of a list, which is handy for
+feeding into other spatial code:
+
+```{r}
+geod_xy("gis:in | utm zone=55 south",
+        x = c(147.3, 147.5),
+        y = c(-42.9, -42.8))
+```
+
+## Validating pipelines
+
+`geod_validate()` compiles a pipeline and returns `TRUE`, or an error string if
+it cannot be built — useful for checking user input before applying it:
+
+```{r}
+geod_validate("gis:in | utm zone=55 south")
+geod_validate("utm zone=banana")
+```
+
+A malformed pipeline passed to `geod_apply()` raises a normal R error:
+
+```{r, error = TRUE}
+geod_apply("utm zone=banana", x = 1, y = 1)
+```
+
+## What's available
+
+`geod_ops()` lists every registered operator and adaptor. See
+`vignette("operators")` for a tour of the transformation families.
+
+```{r}
+head(geod_ops(), 20)
+length(geod_ops())
+```

@@ -3,7 +3,7 @@ LIBDIR = $(TARGET_DIR)/release
 STATLIB = $(LIBDIR)/librgeodesy.a
 PKG_LIBS = -L$(LIBDIR) -lrgeodesy
 
-all: $(SHLIB)
+all: C_clean
 
 $(SHLIB): $(STATLIB)
 
@@ -16,11 +16,16 @@ $(STATLIB):
 		export PATH="$(PATH):$(HOME)/.cargo/bin" && \
 		rustc --version --verbose && \
 		cargo build --lib --release --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR)
+
+# Run cleanup only after $(SHLIB) has been linked, so entrypoint.o still
+# exists when the shared library is built (avoids a parallel-make race).
+C_clean: $(SHLIB)
 	if [ "$(NOT_CRAN)" != "true" ]; then \
 		rm -Rf $(CARGOTMP) && \
 		rm -Rf $(LIBDIR)/build; \
 	fi
-	rm -Rf $(SHLIB) $(OBJECTS)
 
 clean:
 	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS) $(TARGET_DIR)
+
+.PHONY: all C_clean clean
