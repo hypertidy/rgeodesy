@@ -14,7 +14,8 @@ $(STATLIB):
 		export CARGO_HOME=$(CARGOTMP); \
 	fi && \
 		export PATH="$(PATH):$(HOME)/.cargo/bin" && \
-		rustc --version --verbose && \
+		rustc --version && \
+		cargo --version && \
 		cargo build --lib --release --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR)
 
 # Run cleanup only after $(SHLIB) has been linked, so entrypoint.o still
